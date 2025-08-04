@@ -72,24 +72,31 @@ E-Commerce-Aata-Analysis/
 
   *Funnel Analysis Dashboard*
 
-![Funnel_Analysis](https://github.com/user-attachments/assets/b32e0c75-0899-4a6a-91da-2dd53923d0d2)
+![Funnel_Analysis](https://github.com/geettandon/E-Commerce-Data-Analysis/blob/main/Visualizations/Report%20Pages/Funnel_Analysis.png)
 
   *Churn Analysis Dashboard*
 
-![Churn_Analysis](https://github.com/user-attachments/assets/711a096b-5ac0-4bd9-8070-6b1bf137a3e0)
+![Churn_Analysis](https://github.com/geettandon/E-Commerce-Data-Analysis/blob/main/Visualizations/Report%20Pages/Churn_Analysis.png)
 
   *Customer Segmentation with RFM Dashboard*
 
-![Customer_Segmentation](https://github.com/user-attachments/assets/e4079232-70e4-4674-9e6c-f1db480f38c6)
+![Customer_Segmentation](https://github.com/geettandon/E-Commerce-Data-Analysis/blob/main/Visualizations/Report%20Pages/Customer_Segmentation.png)
 
   *Funnel Analysis Tooltip Page*
 
-![Funnel_tooltip](https://github.com/user-attachments/assets/9399854a-14a7-4265-bb11-b71b4dcdccd1)
+![Funnel_tooltip](https://github.com/geettandon/E-Commerce-Data-Analysis/blob/main/Visualizations/Report%20Pages/Funnel_Tooltip.png)
 
   *RFM Segment Details Drillthrough Page*
 
-![RFM_Segment_Details_Drillthrough](https://github.com/user-attachments/assets/f45f26d5-d554-467f-a51a-353129eefc3b)
+![RFM_Segment_Details_Drillthrough](https://github.com/geettandon/E-Commerce-Data-Analysis/blob/main/Visualizations/Report%20Pages/RFM_Segment_Details_Drillthrough.png)
 
 ## 🌟 Contact
-
+                                   
 LinkedIn: https://www.linkedin.com/in/geettandon
+
+
+
+
+
+
+
