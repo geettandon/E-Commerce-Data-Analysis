@@ -1,5 +1,5 @@
 -- E-Commerce End to End Project
--- First leg of the project of data manipulation and cleaning will be in PostgreSQL
+-- First leg of the Project of Data Manipulation and Cleaning will be in PostgreSQL.
 
 -- Creating table customers
 DROP TABLE IF EXISTS customers;
@@ -16,22 +16,23 @@ Create Table customers
 	occupation		VARCHAR(50)		
 );
 
--- Query customers table
-SELECT *
-FROM customers
-LIMIT 5;
-
 -- Copy the data from csv file to customers table
 COPY customers(customer_id, full_name, age, city, gender, state, yearly_income, education, occupation)
 FROM 'C:\\Program Files\\PostgreSQL\\17\\data\\customers.csv'
 DELIMITER ','
 CSV HEADER;
 
+-- Query customers table
+SELECT *
+FROM customers
+LIMIT 5;
+
 -- Creating transactions table
 DROP TABLE IF EXISTS transactions;
 Create Table transactions 
 (
-	transaction_id		INT PRIMARY KEY,		
+	transaction_id		INT PRIMARY KEY,
+	session_id			INT,
 	customer_id			INT,
 	purchase_amount		DECIMAL(10, 2),
 	product_category	VARCHAR(50),
@@ -40,8 +41,8 @@ Create Table transactions
 );
 
 -- Adding data to transactions table from csv file
-COPY transactions(transaction_id, customer_id, purchase_amount, product_category, payment_method,	transaction_date)
-FROM 'C:\\Program Files\\PostgreSQL\\17\\data\\transactions_mod_12may.csv'
+COPY transactions(transaction_id, session_id, customer_id, purchase_amount, product_category, payment_method,	transaction_date)
+FROM 'C:\\Program Files\\PostgreSQL\\17\\data\\transactions.csv'
 DELIMITER ','
 CSV HEADER;
 
@@ -83,7 +84,7 @@ Create Table session_events
 
 -- Adding data to session_events table from csv file
 COPY session_events(session_id, customer_id, event_type, timestamp)
-FROM 'C:\\Program Files\\PostgreSQL\\17\\data\\se_new_18may.csv'
+FROM 'C:\\Program Files\\PostgreSQL\\17\\data\\session_events.csv'
 DELIMITER ','
 CSV HEADER;
 
@@ -129,7 +130,7 @@ SELECT COUNT(*) - COUNT(full_name) AS full_name_missing,
 	 COUNT(*) - COUNT(city) AS city_missing,
 	 COUNT(*) - COUNT(gender) AS gender_missing,
 	 COUNT(*) - COUNT(state) AS state_missing,
-	 COUNT(*) - COUNT(yearly_income) AS age_missing,
+	 COUNT(*) - COUNT(yearly_income) AS yearly_income_missing,
 	 COUNT(*) - COUNT(education) AS education_missing,
 	 COUNT(*) - COUNT(occupation) AS occupation_missing
 FROM customers;
@@ -364,7 +365,7 @@ SET state = 'Maharashtra'
 WHERE state IS NULL
 	AND (city = 'Pune' OR city = 'Mumbai');
 
--- Still found that city and state both have 3 same missing rows,
+-- Still found that city and state both have 3 same missing values,
 -- we will check the combination of education, occupation, and city with count of customers,
 -- and fill those values in customer table.
 WITH CTE AS(
@@ -483,7 +484,7 @@ FROM CTE
 WHERE customers.city = CTE.city
 AND customers.yearly_income IS NULL;
 
--- For filling missing values in education column, we checked for different column wise data.
+-- For filling missing values in education column, checked for different column wise data.
 -- Decided to go through with grouped by values for each city, occupation combination with most likely educational qualifications.
 -- For example, for city of Ahmedabad, most Accountants are having a B.Com education, so we will fill those null values in this
 -- city, occupation combination with B.Com, and so no.
@@ -574,6 +575,10 @@ FROM customers;
 
 -- Exploring transactions table
 
+-- Remove all transactions before 2024-03-19
+DELETE FROM transactions
+WHERE transaction_date < '2024-03-19';
+
 -- Querying first 5 rows
 SELECT *
 FROM transactions
@@ -584,23 +589,7 @@ SELECT COUNT(*)
 FROM transactions;
 
 -- Check for duplicate rows
-SELECT COUNT(DISTINCT(customer_id, purchase_amount, product_category, payment_method, transaction_date))
-FROM transactions;
-
--- We see some duplicates, we will remove them first
-DELETE FROM transactions
-WHERE transaction_id IN (
-	SELECT transaction_id
-	FROM (
-		SELECT transaction_id,
-			ROW_NUMBER() OVER(PARTITION BY customer_id, purchase_amount, product_category, payment_method, transaction_date ORDER BY transaction_id) AS rank
-		FROM transactions
-		)
-	WHERE rank > 1
-);
-
--- Check for duplicate rows after deletion
-SELECT COUNT(*)
+SELECT COUNT(DISTINCT(session_id, transaction_date))
 FROM transactions;
 
 -- Checking for missing values
@@ -690,14 +679,14 @@ FROM churn;
 
 -- total orders stats
 SELECT MIN(total_orders) AS minimum_total_orders,
-	AVG(total_orders) AS avg_total_orders,
+	ROUND(AVG(total_orders),2) AS avg_total_orders,
 	PERCENTILE_DISC(0.5) WITHIN GROUP(ORDER BY total_orders) AS median_total_orders,
 	MAX(total_orders) AS maximum_total_orders
 FROM churn;
 
 -- days_since_last_purchase column
 SELECT MIN(days_since_last_purchase) AS minimum_days_since_last_purchase,
-	AVG(days_since_last_purchase) AS avg_days_since_last_purchase,
+	ROUND(AVG(days_since_last_purchase),2) AS avg_days_since_last_purchase,
 	PERCENTILE_DISC(0.5) WITHIN GROUP(ORDER BY days_since_last_purchase) AS median_days_since_last_purchase,
 	MAX(days_since_last_purchase) AS maximum_days_since_last_purchase
 FROM churn;
@@ -717,69 +706,69 @@ FROM churn;
 
 -- SESSION_EVENT TABLE
 
--- Exploring session_event
+-- Remove all session events before 2024-03-19
+DELETE FROM session_events
+WHERE timestamp < '2024-03-19';
+
+-- Query first 5 rows
 SELECT *
 FROM session_events
 LIMIT 5;
 
--- Total rows in table session_events
-SELECT COUNT(*)
-FROM session_events;
-
--- Unique sessions
-SELECT COUNT(DISTINCT(session_id)) AS sessions
-FROM session_events;
-
--- There are 120000 unique sessions.
-
--- Checking unique events
-SELECT DISTINCT(event_type)
-FROM session_events;
-
--- Exploring duplicates
-SELECT COUNT(DISTINCT(customer_id, event_type, timestamp)) AS unique_records
-FROM session_events;
-
--- There are some duplicates in the table.
-
--- Checking out sessions with more than one customer_ids
-SELECT *
+-- Found Duplicate rows
+SELECT COUNT(*) - COUNT(DISTINCT(customer_id, event_type, timestamp)) AS duplicates
 FROM session_events
-WHERE session_id IN (
-SELECT session_id
-FROM session_events
-GROUP BY 1
-HAVING COUNT(DISTINCT (customer_id)) > 1)
-ORDER BY session_id;
+WHERE timestamp IS NOT NULL;
 
--- We will now update the wrong customer_id with correct customer_id in some sessions
--- Step 1: Find the most frequent customer_id per session_id
-WITH most_frequent_customer AS (
-    SELECT session_id, 
-		customer_id,
-        ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY COUNT(*) DESC) as rn
-    FROM session_events
-	WHERE session_id IN (SELECT session_id
-						FROM session_events
-						GROUP BY 1
-						HAVING COUNT(DISTINCT (customer_id)) > 1)
-    GROUP BY session_id, customer_id
-),
-correct_customer AS (
-    SELECT session_id, 
-		customer_id as correct_customer_id
-    FROM most_frequent_customer
-    WHERE rn = 1
+-- Found 3 duplicate rows,
+-- Solving this issue by removing exact duplicates
+
+-- Checking rows that are duplicated without null values in timestamp
+WITH dup AS (
+  SELECT
+    session_id,
+    customer_id,
+    event_type,
+    timestamp,
+    COUNT(*) OVER (PARTITION BY session_id) AS event_count,
+    ROW_NUMBER() OVER (
+      PARTITION BY customer_id, event_type, timestamp
+      ORDER BY ctid
+    ) AS rn
+  FROM session_events
+  WHERE timestamp IS NOT NULL
 )
--- Step 2: Update mismatched rows
-UPDATE session_events
-SET customer_id = correct_customer.correct_customer_id
-FROM correct_customer
-WHERE session_events.session_id = correct_customer.session_id
-  AND session_events.customer_id <> correct_customer.correct_customer_id;
+SELECT
+  session_id,
+  customer_id,
+  event_type,
+  timestamp,
+  event_count
+FROM dup
+WHERE rn > 1
+ORDER BY customer_id, session_id;
 
--- Deleting the duplicate events that occured in same session_id because one customer can have only one event in one session.
--- based on condition of removing those duplicate records that appeared at later time than first duplicate event.
+-- Deleting the duplicated rows
+WITH to_delete AS (
+  SELECT
+    ctid,
+    ROW_NUMBER() OVER (
+      PARTITION BY customer_id, event_type, timestamp
+      ORDER BY ctid
+    ) AS rn
+  FROM session_events
+  WHERE timestamp IS NOT NULL
+)
+DELETE FROM session_events
+WHERE ctid IN (
+  SELECT ctid
+  FROM to_delete
+  WHERE rn > 1
+);
+
+-- Checking for Sessions with more than one unique events.
+
+-- Finding those sessions and deleting the duplicate event.
 WITH duplicate_events AS (
 SELECT ctid,
 	ROW_NUMBER() OVER(PARTITION BY session_id, customer_id, event_type ORDER BY timestamp DESC) AS rn
@@ -791,114 +780,38 @@ WHERE session_id IN (
 	HAVING COUNT(*) > 1)
 )
 
+-- Deleting those rows
 DELETE FROM session_events
 WHERE ctid IN (
 	SELECT ctid 
 	FROM duplicate_events
 	WHERE rn > 1);
 
--- Checking the duplicates in combination of customer_id, event_type, timestamp columns that is not possible to happen
--- as same customer cannot have same events in different sessions.
--- We will remove those rows based on the session_id with least events where that duplicate is present and we shall not remove 
--- the actual session_id event.
+-- Deleted in total 2082 such rows.
 
--- Checking the result out
-WITH cte AS (
-	SELECT *
-	FROM (
-		SELECT *,ctid,
-			ROW_NUMBER() OVER(PARTITION BY customer_id, event_type, timestamp) as rn
-		FROM session_events
-		WHERE timestamp IS NOT NULL) AS t
-	WHERE rn > 1	
-),
-events AS (
-	SELECT *,
-		COUNT(event_type) OVER(PARTITION BY session_id) AS event_count
-	FROM session_events
-	)
-SELECT
-	events.session_id,
-	cte.customer_id,
-	cte.event_type,
-	cte.timestamp,
-	events.event_count
-FROM events
-JOIN cte
-ON events.customer_id = cte.customer_id
-	AND events.event_type = cte.event_type
-	AND events.timestamp = cte.timestamp
-ORDER BY customer_id, session_id;
+-- Checking for Sessions with more than one customer_id
 
--- Removing the duplicate rows using Delete command
-WITH cte AS (
-	SELECT *
-	FROM (
-		SELECT *,ctid,
-			ROW_NUMBER() OVER(PARTITION BY customer_id, event_type, timestamp) as rn
-		FROM session_events
-		WHERE timestamp IS NOT NULL) AS t
-	WHERE rn > 1	
-),
-events AS (
-	SELECT *,
-		COUNT(event_type) OVER(PARTITION BY session_id) AS event_count
-	FROM session_events
-	),
-	
-session_with_count AS (
-	SELECT
-		events.session_id,
-		cte.customer_id,
-		cte.event_type,
-		cte.timestamp,
-		events.event_count,
-		ROW_NUMBER() OVER(PARTITION BY cte.customer_id, cte.event_type, cte.timestamp ORDER BY events.event_count ASC) AS rn
-	FROM events
-	JOIN cte
-	ON events.customer_id = cte.customer_id
-		AND events.event_type = cte.event_type
-		AND events.timestamp = cte.timestamp
-	ORDER BY customer_id, session_id
-	)
-
--- Deleting the duplicates
-DELETE FROM session_events
-WHERE (session_id, customer_id, event_type, timestamp) IN (
-SELECT 
-	session_id,
-	customer_id,
-	event_type,
-	timestamp
-FROM session_with_count
-WHERE rn = 1);
-
--- All duplicates have been dealt with in the table.
-
--- Now we will check out missing values in the table.
--- Checking for missing values
-SELECT 
-	 COUNT(*) - COUNT(session_id) AS session_id_missing,
-	 COUNT(*) - COUNT(customer_id) AS customer_id_missing,
-	 COUNT(*) - COUNT(event_type) AS event_type_missing,
-	 COUNT(*) - COUNT(timestamp) AS timestamp_missing
-FROM session_events;
-
--- There are 4897 missing values in timestamp column.
--- After checking out missing values in timestamp, some session have all events with missing timestamp. 
--- We will only remove rows where full session events have no timestamps.
-
--- Finding count of unique session_id where all timestamps are missing
-SELECT COUNT(*) AS number_of_rows
+-- Upon Checking, found no such rows.
+SELECT session_id,
+  COUNT(DISTINCT customer_id) AS distinct_customer_count
 FROM session_events
-WHERE session_id IN (
-	SELECT session_id
-	FROM session_events
-	GROUP BY session_id
-	HAVING COUNT(timestamp) = 0);
+GROUP BY session_id
+HAVING COUNT(DISTINCT customer_id) > 1
+ORDER BY distinct_customer_count DESC;
 
--- There are 1168 sessions and 1174 records where all timestamps are missing.
--- First we will remove all those session_id with all timestamps missing
+-- All duplicates have been dealt with.
+
+-- Checking for Sessions with all events timestamp missing
+SELECT
+  session_id,
+  COUNT(*) AS event_count,
+  COUNT(timestamp) AS non_missing_events
+FROM session_events
+GROUP BY session_id
+HAVING COUNT(timestamp) = 0
+ORDER BY session_id;
+
+-- There are 1164 such sessions and 1170 such records to be removed.
 DELETE FROM session_events
 WHERE session_id IN (
 	SELECT session_id
@@ -910,12 +823,12 @@ WHERE session_id IN (
 SELECT COUNT(*) - COUNT(timestamp) AS timestamp_missing
 FROM session_events;
 
--- There are still more than 3700 missing timestamps.
--- Before dealing with these missing timestamps, found that some sessions have wrong order of events.
--- Checking sessions with skipped events
+-- Checking for Missing events in a session
+
+-- Checking for missing events
 WITH skipped_events as (
 	SELECT session_id,
-		COUNT(event_type) AS count_of_events,
+		COUNT(DISTINCT event_type) AS count_of_events,
 		MAX(event_organize) AS max_event
 	FROM (
 		SELECT *,
@@ -932,20 +845,10 @@ SELECT *
 FROM skipped_events
 WHERE count_of_events != max_event;
 
--- Examples to checkout the skipped events.
-SELECT *
-FROM session_events
-WHERE session_id IN (11202, 22453, 24108);
+-- There are 4968 such records to be cleaned
 
--- Now, we will add missing events in sessions which will introduce more nulls, than we will deal with all null timestamps together.
-
--- Creating Stored Procedure to find any skipped events between events and filling them with null values.
--- Skipped events appear in sessions like customer went from visit to checkout with add_to_cart event.
--- Because it is a error, we will fix them.
--- Scenarios: 
-	-- Does not have visit but has one or all of other events,
-	-- Does not have add_to_cart but has checkout and/or purchase,
-	-- Does not have checkout but has purchase
+-- We will use a Stored Procedure to fill any missing events,
+-- but would add null timestamps to deal later.
 -- Optimized Query for Stored Procedure
 CREATE OR REPLACE PROCEDURE fix_missing_events()
 LANGUAGE plpgsql
@@ -956,7 +859,7 @@ BEGIN
     SELECT 
         session_id, 
         customer_id,
-        COUNT(*) AS event_count,
+        COUNT(DISTINCT event_type) AS event_count,
         BOOL_OR(event_type = 'visit') AS has_visit,
         BOOL_OR(event_type = 'add_to_cart') AS has_add_to_cart,
         BOOL_OR(event_type = 'checkout') AS has_checkout,
@@ -1004,433 +907,349 @@ $$;
 -- Calling the Stored Procedure
 CALL fix_missing_events();
 
--- Examples to checkout the skipped events to check if stored procedure is working fine or not.
-SELECT *
-FROM session_events
-WHERE session_id IN (11202, 22453, 24108)
-ORDER BY session_id;
+-- The missing timestamps have increased to 9265 values because we added missing events and added null timestamps.
 
--- Successfully added the skipped events. 
--- Found another issue of wrong order of events. 
--- So before filling the nulls based on averages we will correct the order of events.
+-- Checking for Wrong order of Events
+SELECT
+  se.*,
+  ROW_NUMBER() OVER (
+    PARTITION BY session_id
+    ORDER BY timestamp ASC NULLS LAST
+  ) AS actual_order,
+  CASE se.event_type
+    WHEN 'visit'       THEN 1
+    WHEN 'add_to_cart' THEN 2
+    WHEN 'checkout'    THEN 3
+    WHEN 'purchase'    THEN 4
+  END AS correct_order
+FROM session_events AS se;
 
--- Example of sessions where events are present in wrong order.
-SELECT *
-FROM session_events
-WHERE session_id IN (1, 17, 185, 206)
-ORDER BY session_id, timestamp;
-
--- Found that some events comes at the wrong time like add_to_cart event coming after purchase event.
--- Checking out those sessions but filtering those sessions where any event is null.
-WITH ranked_events AS (
-  SELECT
-    *,
-    MAX(CASE WHEN event_type = 'purchase' THEN timestamp END) OVER (PARTITION BY session_id) AS purchase_time,
-	MAX(CASE WHEN event_type = 'checkout' THEN timestamp END) OVER (PARTITION BY session_id) AS checkout_time,
-	MAX(CASE WHEN event_type = 'add_to_cart' THEN timestamp END) OVER (PARTITION BY session_id) AS add_to_cart_time,
-	MAX(CASE WHEN event_type = 'visit' THEN timestamp END) OVER (PARTITION BY session_id) AS visit_time
-  FROM session_events
-  WHERE session_id NOT IN (SELECT session_id FROM session_events WHERE timestamp IS NULL)
-)
-SELECT *
-FROM ranked_events
-WHERE
-  (event_type = 'visit' AND (timestamp > purchase_time OR timestamp > checkout_time OR timestamp > add_to_cart_time))
-  OR 
-  (event_type = 'add_to_cart' AND (timestamp > purchase_time OR timestamp > checkout_time))
-  OR
-  (event_type = 'checkout' AND (timestamp > purchase_time))
-ORDER BY session_id, customer_id, timestamp;
-
--- Creating a Temp Table to save the session_id of these events.
--- For example: purchase event shows timing of add_to_cart event and vice-versa.
-DROP TABLE IF EXISTS wrong_order_sessions;
-CREATE TEMP TABLE wrong_order_sessions AS
-SELECT DISTINCT(session_id) AS session_id
-FROM(
-	SELECT *,
-		CASE
-			WHEN event_type = 'visit' THEN 1
-			WHEN event_type = 'add_to_cart' THEN 2
-			WHEN event_type = 'checkout' THEN 3
-			WHEN event_type = 'purchase' THEN 4
-		END AS event_order,
-		ROW_NUMBER() OVER(PARTITION BY session_id ORDER BY timestamp) AS time_organize  
-	FROM session_events
-	WHERE session_id NOT IN (SELECT session_id FROM session_events WHERE timestamp IS NULL)
-	)
-WHERE event_order != time_organize;
-
--- We found that more than 15000 sessions has misorganized events, so we will correct that.
+-- Fixing the wrong order of events
 BEGIN;
 
-WITH wrong_order AS (
-    SELECT 
-        session_id,
-        timestamp,
-        event_type AS original_event_type,  -- Store original event type
-        ROW_NUMBER() OVER(
-            PARTITION BY session_id 
-            ORDER BY timestamp
-        ) as event_order
-    FROM session_events
-    WHERE session_id IN (SELECT session_id FROM wrong_order_sessions)
+WITH ordered AS (
+  SELECT
+    ctid,
+    ROW_NUMBER() OVER (
+      PARTITION BY session_id
+      ORDER BY timestamp ASC NULLS LAST
+    ) AS rn
+  FROM session_events
 )
-UPDATE session_events AS se
-SET event_type = CASE 
-                    WHEN wo.event_order = 1 THEN 'visit'
-                    WHEN wo.event_order = 2 THEN 'add_to_cart'
-                    WHEN wo.event_order = 3 THEN 'checkout'
-                    WHEN wo.event_order = 4 THEN 'purchase'
-                END
-FROM wrong_order AS wo
-WHERE se.session_id = wo.session_id
-    AND se.timestamp = wo.timestamp
-    AND se.event_type = wo.original_event_type;  
+UPDATE session_events se
+SET event_type = CASE ordered.rn
+  WHEN 1 THEN 'visit'
+  WHEN 2 THEN 'add_to_cart'
+  WHEN 3 THEN 'checkout'
+  WHEN 4 THEN 'purchase'
+  ELSE se.event_type
+END
+FROM ordered
+WHERE se.ctid = ordered.ctid;
 
---ROLLBACK;
-COMMIT;
+--Rollback;
+Commit;
 
--- Event order is corrected now.
--- Example of session where events were present in wrong order.
-SELECT *
-FROM session_events
-WHERE session_id IN (1, 17, 185, 206)
-ORDER BY session_id, timestamp;
-
--- Checking for missing values before dealing with them.
+-- Checking remaining missing values
 SELECT COUNT(*) - COUNT(timestamp) AS timestamp_missing
 FROM session_events;
 
--- Now the missing values in timestamp has increased to 8025 because of adding of skipped events.
+-- Fixing for Null values
 
--- We will start with filling the missing values with average time between events taken by that customer.
+-- Steps we will follow are:
+	-- Finding the customer event averages in time, then filling the missing values in timestamp
+	-- Finding global event averages, then filling remaining missing values in timestamp 
 
--- Getting minute difference between each event and creating a Temp Table
-DROP TABLE IF EXISTS customer_avg_event_time;
-CREATE TEMP TABLE customer_avg_event_time AS 
-WITH event_min_diff AS (
-	SELECT *,
-		COALESCE(ROUND(EXTRACT(EPOCH from diff) / 60),0) AS minute_diff
-	FROM (
-		SELECT *,
-			timestamp - LAG(timestamp, 1) OVER(PARTITION BY session_id ORDER BY timestamp) AS diff
-		FROM session_events
-		WHERE session_id NOT IN (SELECT session_id FROM session_events WHERE timestamp IS NULL)
-		)
-),
--- Creating different columns for each event time difference
-event_time_separate AS (
-	SELECT *,
-		MAX(CASE WHEN event_type = 'visit' THEN minute_diff END) OVER (PARTITION BY session_id) AS visit_time_diff,
-		MAX(CASE WHEN event_type = 'add_to_cart' THEN minute_diff END) OVER (PARTITION BY session_id) AS addtocart_time_diff,
-		MAX(CASE WHEN event_type = 'checkout' THEN minute_diff END) OVER (PARTITION BY session_id) AS checkout_time_diff,
-		MAX(CASE WHEN event_type = 'purchase' THEN minute_diff END) OVER (PARTITION BY session_id) AS purchase_time_diff
-	FROM event_min_diff
-),
--- Grouping to get one row per session, customer group
-session_customer_grouped AS (SELECT session_id, 
-	customer_id,
-	0 AS visit_time_diff,
-	MAX(addtocart_time_diff) AS addtocart_time_diff,
-	MAX(checkout_time_diff) AS checkout_time_diff,
-	MAX(purchase_time_diff) AS purchase_time_diff
-FROM event_time_separate
-GROUP BY 1, 2
-)
-
--- Geting round of average difference between each event for each customer
-SELECT customer_id,
-	ROUND(AVG(addtocart_time_diff), 0) AS avg_time_bw_visit_and_addtocart,
-	ROUND(AVG(checkout_time_diff), 0) AS avg_time_bw_addtocart_and_checkout,
-	ROUND(AVG(purchase_time_diff), 0) AS avg_time_bw_checkout_and_purchase
-FROM session_customer_grouped
-GROUP BY 1
-ORDER BY customer_id;
-
-
--- Querying the created Temp Table
-SELECT*
-FROM customer_avg_event_time
-LIMIT 10;
-
--- We have created average time between table above. 
--- We will now update the timestamps based on the first available event for every customer.
--- For example: 
--- If customer_id 1 has average time between visit and add_to_cart as 5 minutes, 
--- the query will update the missing timestamp in visit or add_to_cart using either visit or add_to_cart time 
--- adding or subtracting 5 minutes respectively.
-
-BEGIN;
-
--- Step 1: Create temp table with available timestamps for each session
-CREATE TEMP TABLE valid_timestamps AS
-SELECT 
+-- Finding each customer average time between events
+DROP TABLE IF EXISTS customer_event_avg;
+CREATE TEMP TABLE customer_event_avg AS
+WITH session_times AS (
+  SELECT
     session_id,
-    MIN(CASE WHEN event_type = 'visit' THEN timestamp END) AS visit_time,
-    MIN(CASE WHEN event_type = 'add_to_cart' THEN timestamp END) AS add_to_cart_time,
-    MIN(CASE WHEN event_type = 'checkout' THEN timestamp END) AS checkout_time,
-    MIN(CASE WHEN event_type = 'purchase' THEN timestamp END) AS purchase_time,
-    customer_id
+    customer_id,
+    MAX(CASE WHEN event_type = 'visit'       THEN timestamp END) AS visit_ts,
+    MAX(CASE WHEN event_type = 'add_to_cart' THEN timestamp END) AS add_ts,
+    MAX(CASE WHEN event_type = 'checkout'    THEN timestamp END) AS checkout_ts,
+    MAX(CASE WHEN event_type = 'purchase'    THEN timestamp END) AS purchase_ts
+  FROM session_events
+  GROUP BY session_id, customer_id
+)
+SELECT
+  customer_id,
+  AVG(EXTRACT(EPOCH FROM (add_ts      - visit_ts  )))   AS avg_v2a_secs,
+  AVG(EXTRACT(EPOCH FROM (checkout_ts - add_ts    )))   AS avg_a2c_secs,
+  AVG(EXTRACT(EPOCH FROM (purchase_ts - checkout_ts))) AS avg_c2p_secs
+FROM session_times
+WHERE
+  (visit_ts    IS NOT NULL AND add_ts      IS NOT NULL)
+  OR (add_ts     IS NOT NULL AND checkout_ts IS NOT NULL)
+  OR (checkout_ts IS NOT NULL AND purchase_ts IS NOT NULL)
+GROUP BY customer_id;
+
+-- Checking the table created
+SELECT *
+FROM customer_event_avg
+LIMIT 5;
+
+-- Prepare a temp view of each session’s four event timestamps
+DROP VIEW IF EXISTS session_times;
+CREATE TEMP VIEW session_times AS
+SELECT
+  session_id,
+  customer_id,
+  MAX(CASE WHEN event_type = 'visit'       THEN timestamp END) AS visit_ts,
+  MAX(CASE WHEN event_type = 'add_to_cart' THEN timestamp END) AS add_ts,
+  MAX(CASE WHEN event_type = 'checkout'    THEN timestamp END) AS checkout_ts,
+  MAX(CASE WHEN event_type = 'purchase'    THEN timestamp END) AS purchase_ts
 FROM session_events
-WHERE session_id IN (SELECT session_id FROM session_events WHERE timestamp IS NULL)
 GROUP BY session_id, customer_id;
 
--- Step 2: Create an index on the temporary table for faster joins
-CREATE INDEX idx_valid_timestamps ON valid_timestamps(session_id, customer_id);
-
--- Step 3: Update each event type with targeted updates
--- Update visit timestamps
+-- 1) Backfill VISIT from ADD_TO_CART
 UPDATE session_events se
-SET timestamp = 
-    CASE 
-        WHEN vt.add_to_cart_time IS NOT NULL THEN 
-            vt.add_to_cart_time - (ca.avg_time_bw_visit_and_addtocart * INTERVAL '1 minute')
-        WHEN vt.checkout_time IS NOT NULL THEN 
-            vt.checkout_time - ((ca.avg_time_bw_visit_and_addtocart + ca.avg_time_bw_addtocart_and_checkout) * INTERVAL '1 minute')
-        WHEN vt.purchase_time IS NOT NULL THEN 
-            vt.purchase_time - ((ca.avg_time_bw_visit_and_addtocart + ca.avg_time_bw_addtocart_and_checkout + ca.avg_time_bw_checkout_and_purchase) * INTERVAL '1 minute')
-    END
-FROM valid_timestamps vt
-JOIN customer_avg_event_time ca ON vt.customer_id = ca.customer_id
-WHERE se.session_id = vt.session_id
-AND se.event_type = 'visit'
-AND se.timestamp IS NULL;
-
--- Update add_to_cart timestamps
-UPDATE session_events se
-SET timestamp = 
-    CASE 
-        WHEN vt.visit_time IS NOT NULL THEN 
-            vt.visit_time + (ca.avg_time_bw_visit_and_addtocart * INTERVAL '1 minute')
-        WHEN vt.checkout_time IS NOT NULL THEN 
-            vt.checkout_time - (ca.avg_time_bw_addtocart_and_checkout * INTERVAL '1 minute')
-        WHEN vt.purchase_time IS NOT NULL THEN 
-            vt.purchase_time - ((ca.avg_time_bw_addtocart_and_checkout + ca.avg_time_bw_checkout_and_purchase) * INTERVAL '1 minute')
-    END
-FROM valid_timestamps vt
-JOIN customer_avg_event_time ca ON vt.customer_id = ca.customer_id
-WHERE se.session_id = vt.session_id
-AND se.event_type = 'add_to_cart'
-AND se.timestamp IS NULL;
-
--- Update checkout timestamps
-UPDATE session_events se
-SET timestamp = 
-    CASE 
-        WHEN vt.add_to_cart_time IS NOT NULL THEN 
-            vt.add_to_cart_time + (ca.avg_time_bw_addtocart_and_checkout * INTERVAL '1 minute')
-        WHEN vt.visit_time IS NOT NULL THEN 
-            vt.visit_time + ((ca.avg_time_bw_visit_and_addtocart + ca.avg_time_bw_addtocart_and_checkout) * INTERVAL '1 minute')
-        WHEN vt.purchase_time IS NOT NULL THEN 
-            vt.purchase_time - (ca.avg_time_bw_checkout_and_purchase * INTERVAL '1 minute')
-    END
-FROM valid_timestamps vt
-JOIN customer_avg_event_time ca ON vt.customer_id = ca.customer_id
-WHERE se.session_id = vt.session_id
-AND se.event_type = 'checkout'
-AND se.timestamp IS NULL;
-
--- Update purchase timestamps
-UPDATE session_events se
-SET timestamp = 
-    CASE 
-        WHEN vt.checkout_time IS NOT NULL THEN 
-            vt.checkout_time + (ca.avg_time_bw_checkout_and_purchase * INTERVAL '1 minute')
-        WHEN vt.add_to_cart_time IS NOT NULL THEN 
-            vt.add_to_cart_time + ((ca.avg_time_bw_addtocart_and_checkout + ca.avg_time_bw_checkout_and_purchase) * INTERVAL '1 minute')
-        WHEN vt.visit_time IS NOT NULL THEN 
-            vt.visit_time + ((ca.avg_time_bw_visit_and_addtocart + ca.avg_time_bw_addtocart_and_checkout + ca.avg_time_bw_checkout_and_purchase) * INTERVAL '1 minute')
-    END
-FROM valid_timestamps vt
-JOIN customer_avg_event_time ca ON vt.customer_id = ca.customer_id
-WHERE se.session_id = vt.session_id
-AND se.event_type = 'purchase'
-AND se.timestamp IS NULL;
-
--- Clean up by removing the created Temp Table named valid_timestamps
-DROP TABLE valid_timestamps;
-
--- Check if we still have NULL timestamps
-SELECT COUNT(*) 
-FROM session_events 
-WHERE timestamp IS NULL;
-
--- We still have 245 missing timestamps that is because some customers don't have all events, 
--- so their average time between events would be null.
--- See some sample fixed sessions
-SELECT * 
-FROM session_events
-WHERE session_id IN (
-    SELECT session_id FROM session_events 
-    WHERE timestamp IS NOT NULL
-    LIMIT 10
+SET timestamp = date_trunc(
+  'second',
+  st.add_ts - INTERVAL '1 second' * cea.avg_v2a_secs
 )
-ORDER BY session_id, 
-    CASE event_type
-        WHEN 'visit' THEN 1
-        WHEN 'add_to_cart' THEN 2
-        WHEN 'checkout' THEN 3
-        WHEN 'purchase' THEN 4
-    END;
+FROM session_times st
+JOIN customer_event_avg cea ON cea.customer_id = st.customer_id
+WHERE se.session_id   = st.session_id
+  AND se.customer_id  = st.customer_id
+  AND se.event_type   = 'visit'
+  AND se.timestamp   IS NULL
+  AND st.add_ts      IS NOT NULL
+  AND cea.avg_v2a_secs IS NOT NULL
+;
 
---ROLLBACK;
-COMMIT;
-
--- We will now deal with the remaining 245 values.
--- We will calculate the global average duration between events.
--- Then fill those values.
-BEGIN;
-
--- Calculate global average times
-WITH global_averages AS (
-    SELECT 
-        ROUND(AVG(avg_time_bw_visit_and_addtocart), 0) AS global_avg_visit_to_cart,
-        ROUND(AVG(avg_time_bw_addtocart_and_checkout), 0) AS global_avg_cart_to_checkout,
-        ROUND(AVG(avg_time_bw_checkout_and_purchase), 0) AS global_avg_checkout_to_purchase
-    FROM customer_avg_event_time
-    WHERE 
-        avg_time_bw_visit_and_addtocart IS NOT NULL AND
-        avg_time_bw_addtocart_and_checkout IS NOT NULL AND
-        avg_time_bw_checkout_and_purchase IS NOT NULL
-),
--- Get baseline timestamps for each session with NULL values
-session_base_times AS (
-    SELECT 
-        session_id,
-        MIN(CASE WHEN event_type = 'visit' THEN timestamp END) AS visit_time,
-        MIN(CASE WHEN event_type = 'add_to_cart' THEN timestamp END) AS cart_time,
-        MIN(CASE WHEN event_type = 'checkout' THEN timestamp END) AS checkout_time,
-        MIN(CASE WHEN event_type = 'purchase' THEN timestamp END) AS purchase_time,
-        MIN(timestamp) AS base_time
-    FROM session_events
-    WHERE session_id IN (SELECT DISTINCT session_id FROM session_events WHERE timestamp IS NULL)
-    GROUP BY session_id
-)
--- Apply updates for each event type
+-- 2) Fill missing ADD_TO_CART when VISIT exists
 UPDATE session_events se
-SET timestamp = 
-    CASE se.event_type
-        WHEN 'visit' THEN
-            COALESCE(
-                sbt.visit_time,
-                CASE 
-                    WHEN sbt.cart_time IS NOT NULL THEN sbt.cart_time - (ga.global_avg_visit_to_cart * INTERVAL '1 minute')
-                    WHEN sbt.checkout_time IS NOT NULL THEN sbt.checkout_time - ((ga.global_avg_visit_to_cart + ga.global_avg_cart_to_checkout) * INTERVAL '1 minute')
-                    WHEN sbt.purchase_time IS NOT NULL THEN sbt.purchase_time - ((ga.global_avg_visit_to_cart + ga.global_avg_cart_to_checkout + ga.global_avg_checkout_to_purchase) * INTERVAL '1 minute')
-                    ELSE sbt.base_time
-                END
-            )
-        WHEN 'add_to_cart' THEN
-            COALESCE(
-                sbt.cart_time,
-                CASE 
-                    WHEN sbt.visit_time IS NOT NULL THEN sbt.visit_time + (ga.global_avg_visit_to_cart * INTERVAL '1 minute')
-                    WHEN sbt.checkout_time IS NOT NULL THEN sbt.checkout_time - (ga.global_avg_cart_to_checkout * INTERVAL '1 minute')
-                    WHEN sbt.purchase_time IS NOT NULL THEN sbt.purchase_time - ((ga.global_avg_cart_to_checkout + ga.global_avg_checkout_to_purchase) * INTERVAL '1 minute')
-                    ELSE sbt.base_time + (ga.global_avg_visit_to_cart * INTERVAL '1 minute')
-                END
-            )
-        WHEN 'checkout' THEN
-            COALESCE(
-                sbt.checkout_time,
-                CASE 
-                    WHEN sbt.cart_time IS NOT NULL THEN sbt.cart_time + (ga.global_avg_cart_to_checkout * INTERVAL '1 minute')
-                    WHEN sbt.visit_time IS NOT NULL THEN sbt.visit_time + ((ga.global_avg_visit_to_cart + ga.global_avg_cart_to_checkout) * INTERVAL '1 minute')
-                    WHEN sbt.purchase_time IS NOT NULL THEN sbt.purchase_time - (ga.global_avg_checkout_to_purchase * INTERVAL '1 minute')
-                    ELSE sbt.base_time + ((ga.global_avg_visit_to_cart + ga.global_avg_cart_to_checkout) * INTERVAL '1 minute')
-                END
-            )
-        WHEN 'purchase' THEN
-            COALESCE(
-                sbt.purchase_time,
-                CASE 
-                    WHEN sbt.checkout_time IS NOT NULL THEN sbt.checkout_time + (ga.global_avg_checkout_to_purchase * INTERVAL '1 minute')
-                    WHEN sbt.cart_time IS NOT NULL THEN sbt.cart_time + ((ga.global_avg_cart_to_checkout + ga.global_avg_checkout_to_purchase) * INTERVAL '1 minute')
-                    WHEN sbt.visit_time IS NOT NULL THEN sbt.visit_time + ((ga.global_avg_visit_to_cart + ga.global_avg_cart_to_checkout + ga.global_avg_checkout_to_purchase) * INTERVAL '1 minute')
-                    ELSE sbt.base_time + ((ga.global_avg_visit_to_cart + ga.global_avg_cart_to_checkout + ga.global_avg_checkout_to_purchase) * INTERVAL '1 minute')
-                END
-            )
-    END
-FROM session_base_times sbt, global_averages ga
-WHERE se.session_id = sbt.session_id
-AND se.timestamp IS NULL;
+SET timestamp = date_trunc(
+  'second',
+  st.visit_ts + INTERVAL '1 second' * cea.avg_v2a_secs
+)
+FROM session_times st
+JOIN customer_event_avg cea ON cea.customer_id = st.customer_id
+WHERE se.session_id   = st.session_id
+  AND se.customer_id  = st.customer_id
+  AND se.event_type   = 'add_to_cart'
+  AND se.timestamp   IS NULL
+  AND st.visit_ts    IS NOT NULL
+  AND cea.avg_v2a_secs IS NOT NULL
+;
 
--- Check for any remaining nulls
-SELECT COUNT(*) 
-FROM session_events 
-WHERE timestamp IS NULL;
+-- 3) Backfill ADD_TO_CART from CHECKOUT
+UPDATE session_events se
+SET timestamp = date_trunc(
+  'second',
+  st.checkout_ts - INTERVAL '1 second' * cea.avg_a2c_secs
+)
+FROM session_times st
+JOIN customer_event_avg cea ON cea.customer_id = st.customer_id
+WHERE se.session_id     = st.session_id
+  AND se.customer_id    = st.customer_id
+  AND se.event_type     = 'add_to_cart'
+  AND se.timestamp     IS NULL
+  AND st.checkout_ts   IS NOT NULL
+  AND cea.avg_a2c_secs IS NOT NULL
+;
 
--- Dropping Temp Table
-DROP TABLE customer_avg_event_time;
+-- 4) Fill missing CHECKOUT when ADD_TO_CART exists
+UPDATE session_events se
+SET timestamp = date_trunc(
+  'second',
+  st.add_ts + INTERVAL '1 second' * cea.avg_a2c_secs
+)
+FROM session_times st
+JOIN customer_event_avg cea ON cea.customer_id = st.customer_id
+WHERE se.session_id     = st.session_id
+  AND se.customer_id    = st.customer_id
+  AND se.event_type     = 'checkout'
+  AND se.timestamp     IS NULL
+  AND st.add_ts        IS NOT NULL
+  AND cea.avg_a2c_secs IS NOT NULL
+;
 
--- ROLLBACK;
-COMMIT;
+-- 5) Backfill CHECKOUT from PURCHASE
+UPDATE session_events se
+SET timestamp = date_trunc(
+  'second',
+  st.purchase_ts - INTERVAL '1 second' * cea.avg_c2p_secs
+)
+FROM session_times st
+JOIN customer_event_avg cea ON cea.customer_id = st.customer_id
+WHERE se.session_id      = st.session_id
+  AND se.customer_id     = st.customer_id
+  AND se.event_type      = 'checkout'
+  AND se.timestamp      IS NULL
+  AND st.purchase_ts    IS NOT NULL
+  AND cea.avg_c2p_secs IS NOT NULL
+;
 
--- All missing timestamps have been dealt with.
+-- 6) Forward-fill PURCHASE from CHECKOUT
+UPDATE session_events se
+SET timestamp = date_trunc(
+  'second',
+  st.checkout_ts + INTERVAL '1 second' * cea.avg_c2p_secs
+)
+FROM session_times st
+JOIN customer_event_avg cea ON cea.customer_id = st.customer_id
+WHERE se.session_id      = st.session_id
+  AND se.customer_id     = st.customer_id
+  AND se.event_type      = 'purchase'
+  AND se.timestamp      IS NULL
+  AND st.checkout_ts    IS NOT NULL
+  AND cea.avg_c2p_secs IS NOT NULL
+;
 
--- Checking the update results
+-- Dropping the VIEW
+DROP VIEW IF EXISTS session_times;
+
+
+-- Checking remaining missing values
+SELECT COUNT(*) - COUNT(timestamp) AS timestamp_missing
+FROM session_events;
+
+-- Fixing Remaining Missing Values
+
+-- Calculating global average time between events across all customers
+DROP TABLE IF EXISTS global_event_avg;
+CREATE TEMP TABLE global_event_avg AS
+WITH session_times AS (
+  SELECT
+    session_id,
+    MAX(CASE WHEN event_type = 'visit'       THEN timestamp END) AS visit_ts,
+    MAX(CASE WHEN event_type = 'add_to_cart' THEN timestamp END) AS add_ts,
+    MAX(CASE WHEN event_type = 'checkout'    THEN timestamp END) AS checkout_ts,
+    MAX(CASE WHEN event_type = 'purchase'    THEN timestamp END) AS purchase_ts
+  FROM session_events
+  GROUP BY session_id
+)
+SELECT
+  AVG(EXTRACT(EPOCH FROM (add_ts       - visit_ts  ))) FILTER (WHERE visit_ts    IS NOT NULL AND add_ts      IS NOT NULL)   AS avg_v2a_secs,
+  AVG(EXTRACT(EPOCH FROM (checkout_ts  - add_ts    ))) FILTER (WHERE add_ts      IS NOT NULL AND checkout_ts IS NOT NULL) AS avg_a2c_secs,
+  AVG(EXTRACT(EPOCH FROM (purchase_ts  - checkout_ts))) FILTER (WHERE checkout_ts IS NOT NULL AND purchase_ts IS NOT NULL) AS avg_c2p_secs
+FROM session_times;
+
+-- Exploring created table: global_event_avg
 SELECT *
-FROM session_events
-WHERE session_id IN (843, 1969, 2119, 11090, 16524)
-ORDER BY timestamp ASC;
+FROM global_event_avg
+LIMIT 5;
 
--- At the time of fixing the wrong event order we skipped those sessions where timestamps were missing,
--- so we have to correct order for those events as well.
-
-
--- Checking out number of such sessions.
--- For example: purchase event shows timing of add_to_cart event and vice-versa.
-DROP TABLE IF EXISTS wrong_order_sessions;
-CREATE TEMP TABLE wrong_order_sessions AS
-SELECT DISTINCT(session_id) AS session_id
-FROM(
-	SELECT *,
-		CASE
-			WHEN event_type = 'visit' THEN 1
-			WHEN event_type = 'add_to_cart' THEN 2
-			WHEN event_type = 'checkout' THEN 3
-			WHEN event_type = 'purchase' THEN 4
-		END AS event_order,
-		ROW_NUMBER() OVER(PARTITION BY session_id ORDER BY timestamp) AS time_organize  
-	FROM session_events
-	WHERE session_id NOT IN (SELECT session_id FROM session_events WHERE timestamp IS NULL)
-	)
-WHERE event_order != time_organize;
-
--- Updating the order of events in these sessions 
-BEGIN;
-
-WITH wrong_order AS (
-    SELECT 
-        session_id,
-        timestamp,
-        event_type AS original_event_type,  -- Store original event type
-        ROW_NUMBER() OVER(
-            PARTITION BY session_id 
-            ORDER BY timestamp
-        ) as event_order
-    FROM session_events
-    WHERE session_id IN (SELECT session_id FROM wrong_order_sessions)
+--  Back-/forward-fill all remaining NULL timestamps using the global averages
+WITH session_times AS (
+  SELECT
+    session_id,
+    customer_id,
+    MAX(CASE WHEN event_type = 'visit'       THEN timestamp END) AS visit_ts,
+    MAX(CASE WHEN event_type = 'add_to_cart' THEN timestamp END) AS add_ts,
+    MAX(CASE WHEN event_type = 'checkout'    THEN timestamp END) AS checkout_ts,
+    MAX(CASE WHEN event_type = 'purchase'    THEN timestamp END) AS purchase_ts
+  FROM session_events
+  GROUP BY session_id, customer_id
 )
-UPDATE session_events AS se
-SET event_type = CASE 
-                    WHEN wo.event_order = 1 THEN 'visit'
-                    WHEN wo.event_order = 2 THEN 'add_to_cart'
-                    WHEN wo.event_order = 3 THEN 'checkout'
-                    WHEN wo.event_order = 4 THEN 'purchase'
-                END
-FROM wrong_order AS wo
-WHERE se.session_id = wo.session_id
-    AND se.timestamp = wo.timestamp
-    AND se.event_type = wo.original_event_type;  
 
--- ROLLBACK;
-COMMIT;
+UPDATE session_events se
+SET timestamp = date_trunc(
+  'second',
+  CASE se.event_type
+    WHEN 'visit'       THEN
+      COALESCE(
+        st.add_ts     - (g.avg_v2a_secs * INTERVAL '1 second')
+      )
+    WHEN 'add_to_cart' THEN
+      COALESCE(
+        st.visit_ts   + (g.avg_v2a_secs * INTERVAL '1 second'),
+        st.checkout_ts - (g.avg_a2c_secs * INTERVAL '1 second')
+      )
+    WHEN 'checkout'    THEN
+      COALESCE(
+        st.add_ts      + (g.avg_a2c_secs * INTERVAL '1 second'),
+        st.purchase_ts - (g.avg_c2p_secs * INTERVAL '1 second')
+      )
+    WHEN 'purchase'    THEN
+      COALESCE(
+        st.checkout_ts + (g.avg_c2p_secs * INTERVAL '1 second'),
+        st.add_ts      + ((g.avg_a2c_secs + g.avg_c2p_secs) * INTERVAL '1 second'),
+        st.visit_ts    + ((g.avg_v2a_secs + g.avg_a2c_secs + g.avg_c2p_secs) * INTERVAL '1 second')
+      )
+    ELSE se.timestamp
+  END
+)
+FROM session_times st
+CROSS JOIN global_event_avg g
+WHERE se.session_id  = st.session_id
+  AND se.customer_id = st.customer_id
+  AND se.timestamp   IS NULL;
 
--- Session_events is now clean
--- Query first 20 sessions
-SELECT *
-FROM session_events
-WHERE session_id < 20
-ORDER BY session_id, timestamp;
+-- All null values have been filled
+
+-- Since some events and dates have been corrected, we will change the dates in transactions table,
+-- then update the churn table based on transactions table.
+
+-- Checking mismatch rows in transactions and session_events
+SELECT 
+  COUNT(*) AS mismatched_transactions
+FROM transactions t
+JOIN session_events se
+  ON t.session_id  = se.session_id
+ AND t.customer_id = se.customer_id
+ AND se.event_type = 'purchase'
+WHERE t.transaction_date IS DISTINCT FROM se.timestamp;
+
+-- Updating transactions table
+UPDATE transactions t
+SET transaction_date = se.timestamp
+FROM session_events se
+WHERE se.event_type = 'purchase'
+  AND t.session_id = se.session_id
+  AND t.customer_id = se.customer_id
+  AND t.transaction_date IS DISTINCT FROM se.timestamp;
+
+-- Since we updated some values we will be checking for duplicates in the transactions table
+-- Check for duplicate rows
+SELECT COUNT(DISTINCT(session_id, transaction_date))
+FROM transactions;
+
+-- We see some duplicates, we will remove them
+DELETE FROM transactions
+WHERE transaction_id IN (
+	SELECT transaction_id
+	FROM (
+		SELECT transaction_id,
+			ROW_NUMBER() OVER(PARTITION BY session_id, transaction_date ORDER BY transaction_id) AS rank
+		FROM transactions
+		)
+	WHERE rank > 1
+);
+
+-- Check for duplicate rows after deletion
+SELECT COUNT(*)
+FROM transactions;
+
+-- Updated the transactions table
+
+-- Checking mismatch rows in transactions and churn
+SELECT 
+  COUNT(*) AS affected_churn_rows
+FROM churn c
+JOIN (
+  SELECT 
+    customer_id,
+    MAX(transaction_date) AS new_last_purchase_date
+  FROM transactions
+  GROUP BY customer_id
+) t
+  ON c.customer_id = t.customer_id
+WHERE c.last_purchase_date IS DISTINCT FROM t.new_last_purchase_date;
+
+-- Updating churn table
+UPDATE churn c
+SET last_purchase_date = t.new_last_purchase_date
+FROM (
+  SELECT
+    customer_id,
+    MAX(transaction_date) AS new_last_purchase_date
+  FROM transactions
+  GROUP BY customer_id
+) AS t
+WHERE c.customer_id = t.customer_id
+  AND c.last_purchase_date IS DISTINCT FROM t.new_last_purchase_date;
