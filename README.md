@@ -54,7 +54,8 @@ E-Commerce-Aata-Analysis/
 │   ├── Raw/
 │   ├── Cleaned/
 ├── SQL Scripts/
-│   └── SQL_data_exploration_cleaning.sql
+│   ├── SQL_data_exploration_cleaning.sql
+|   ├── sql_script.pdf
 ├── Notebooks/
 │   └── Data_exploration_analysis.ipynb
 ├── Visualizations/
