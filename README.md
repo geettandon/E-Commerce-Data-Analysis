@@ -11,20 +11,20 @@ Turn messy, multi-table e-commerce data into analysis-ready models and ship deci
 - Measure churn and cohort behaviour,
 - Segment customers with RFM to drive targeted actions.
 
-## Dataset & Scale
+## 🗂️ Dataset & Scale
 
 - Tables: Customers, Transactions, SessionEvents, Churn
 - Records: 9,976 customers • 29,184 transactions • 256,591 session events • 9,897 churn/RFM rows
 - Synthetic data with realistic issues (missing values, out-of-order events, inconsistent IDs)
 
-## Architecture at a Glance
+## 🏗️ Architecture at a Glance
 
 - Storage/ETL: CSV → PostgreSQL 
 - Processing: SQL (CTEs, window functions, PL/pgSQL procedures) for cleaning/standardisation
 - Analysis: Python (pandas, numpy, matplotlib/seaborn) for EDA & feature engineering
 - BI: Power BI dashboards (Funnel, Churn, RFM) with slicers, KPIs, drill-through, bookmarks, custom tooltips
 
-## Data Preparation (SQL)
+## 🧹 Data Preparation (SQL)
 
 File: SQL_data_exploration_cleaning.sql
 
@@ -36,7 +36,7 @@ File: SQL_data_exploration_cleaning.sql
   - Back/Forward-Filled timestamps using customer-level and global average inter-event gaps.
 - Reconciled Transactions ↔ SessionEvents so purchase counts align (→ 29,184).
 
-## Analysis & Feature Engineering (Python)
+## 🐍 Analysis & Feature Engineering (Python)
 Files: Data_exploration_analysis.ipynb
 
 - Connected to PostgreSQL with SQLAlchemy; validated schema and data types.
@@ -46,14 +46,14 @@ Files: Data_exploration_analysis.ipynb
   - Funnel metrics: stage conversions & drop-offs.
   - Churn metrics: labelled churn %, trends, cohort comparisons.
 
-## Dashboards (Power BI)
+## 📊 Dashboards (Power BI)
 Reports: E-Commerce_Project.pbix
 
 - Funnel report: date/hour/DOW/payment slicers, KPI cards, funnel + waterfall, tooltip (avg age/income/churn), bookmarks (Reset / Highlight Drop-offs).
 - Churn report: date & demographic slicers, churn vs retention, monthly trend, recency-frequency scatter, churn-rate bars.
 - RFM report: segment & demographic slicers, segment KPIs, combo chart (avg R/F bars + M line), RFM matrix (heat), drill-through to boxplots & Top-10 customers.
 
-## Key Findings (What the data says)
+## 🔎 Key Findings (What the data says)
 
 - Biggest friction: Visit → Add to Cart.
 - Overall funnel conversion: ~23.36%.
@@ -62,7 +62,7 @@ Reports: E-Commerce_Project.pbix
 - RFM distribution: Loyal 3,056, At-Risk 2,405, Hibernating 2,185, Champion 1,343, Potential Loyalist 908.
 - Data consistency: Purchases reconciled across SessionEvents and Transactions at 29,184, ensuring one source of truth for KPIs.
 
-## Actions (What to do next)
+## 🚀 Actions (What to do next)
 
 Funnel (reduce Add-to-Cart drop-off):
 - Tighten PDP → Add to Cart: surface size/availability, trust badges, delivery dates, returns; preload size guides; simplify variant selection.
@@ -102,7 +102,7 @@ E-Commerce-Aata-Analysis/
 │       └── Funnel Tooltip.png
 └── README.md
 ```
-## Tech Stack
+## 🧰 Tech Stack
 - PostgreSQL (CTEs, window functions, PL/pgSQL)
 - Python (pandas, numpy, matplotlib/seaborn, SQLAlchemy)
 - Power BI
